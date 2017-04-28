@@ -1,7 +1,7 @@
 const fs        = require('fs')
 const db        = require('../db')
 const config    = require('../config.json')
-const m         = db.get('memory')
+let m           = db.get('memory')
 let vocabulary  = db.get('vocabulary')
 
 function getVerbs(){
@@ -36,14 +36,14 @@ function init() {
         vocabulary.verbs = getVerbs()
     }
     if (undefined === vocabulary.punctuation){
-        var default_punctuation = ".?!,'\";"
+        var default_punctuation = ".?!,'\"; "
         vocabulary.punctuation = default_punctuation
     }
     db.insert('vocabulary', vocabulary)
 }
 
 function epur(word) {
-    return word.replace(' ', '').toLowerCase()
+    return word.replace(/\s/g, '').toLowerCase().replace(',', '')
 }
 
 function removeFromArray(array, index){
@@ -51,27 +51,32 @@ function removeFromArray(array, index){
 }
 
 function getWordsByType(type, words) {
-    var topic = vocabulary[type]
-    var found = []
-
+    let topic = vocabulary[type]
+    let found = []
+    let extras = []
+    
     for (var i = 0; i < words.length; i++) {
-        var word = epur(words[i])
+        let word = epur(words[i])
+        let isFound = false;
         for (var item in topic) {
             if (topic[item].regex !== undefined) {
                 re = new RegExp(topic[item].regex, "i")
-                console.log('regex', re)
                 if (re.test(word)){
                     found.push(item)
-                    words = removeFromArray(words, i)
+                    isFound = true
                 }
             }
             else if (item == word) {
                 found.push(item)
-                words = removeFromArray(words, i)
+                isFound = true
             }
         }
+        if (!isFound){
+            extras.push(word)
+        }        
     }
-    return {found: found, words: words}   
+    console.log(type, extras)
+    return {found: found, words: extras}
 }
 
 function adaptPronoun(subject, from){
@@ -115,8 +120,8 @@ function getSubjects(words, from){
 }
 
 function process(message, from)  {
+    m = db.get('memory')
     let words = message.match(/\S+\s*/g);
-    console.log('words')
     let verbs = getWordsByType('verbs', words)
     let questions = getWordsByType('questions', verbs.words)
     let adjectives = getWordsByType('adjectives', questions.words)
