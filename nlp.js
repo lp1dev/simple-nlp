@@ -1,10 +1,27 @@
-const db = require('../db')
-const config = require('../config.json')
-var vocabulary = db.get('vocabulary')
+const fs        = require('fs')
+const db        = require('../db')
+const config    = require('../config.json')
+const m         = db.get('memory')
+let vocabulary  = db.get('vocabulary')
+
+function getVerbs(){
+    console.log('getVerbs')
+    let verbs = {}
+    let files = fs.readdirSync(config.verbs_dir)
+    files.forEach((file) => {
+        verb = require('.' + config.verbs_dir + '/' + file)
+        verbs[verb.name] = verb
+    })
+    console.log(verbs)
+    return verbs
+}
 
 function init() {
     if (undefined === vocabulary) {
         vocabulary = {}
+    }
+    if (undefined === vocabulary.adjectives){
+        vocabulary.adjectives = {}
     }
     if (undefined === vocabulary.questions) {
         var default_questions = {'who': {},
@@ -16,10 +33,7 @@ function init() {
         vocabulary.questions = default_questions
     }
     if (undefined === vocabulary.verbs){
-        var default_verbs = {
-            'to_be': {regex: '\b(is|are|being|to be|am)\b'}
-        }
-        vocabulary.verbs = default_verbs
+        vocabulary.verbs = getVerbs()
     }
     if (undefined === vocabulary.punctuation){
         var default_punctuation = ".?!,'\";"
@@ -82,7 +96,18 @@ function getSubjects(words, from){
     for (var i = 0; i < words.length; i++) {
         var word = epur(words[i])
         if (vocabulary.punctuation.indexOf(word) === -1){
-            subjects.push(adaptPronoun(word, from))
+            var pronoun = adaptPronoun(word, from)
+            if (pronoun !== word){
+                subjects.push(pronoun)
+                words = removeFromArray(words, i)
+            }
+            else if (undefined !== m.people.names[word] ||
+                     undefined !== m.people.nicknames[word]){
+                subjects.push(word)
+                words = removeFromArray(words, i)
+            }
+        }
+        else{
             words = removeFromArray(words, i)
         }
     }
@@ -90,12 +115,19 @@ function getSubjects(words, from){
 }
 
 function process(message, from)  {
-    var words = message.match(/\S+\s*/g);
-    console.log('words', words)
-    var verbs = getWordsByType('verbs', words)
-    var questions = getWordsByType('questions', verbs.words)
-    var subjects = getSubjects(questions.words, from)
-    return {questions: questions.found, subjects: subjects.found, verbs: verbs.found, adjectives: subjects.words}
+    let words = message.match(/\S+\s*/g);
+    console.log('words')
+    let verbs = getWordsByType('verbs', words)
+    let questions = getWordsByType('questions', verbs.words)
+    let adjectives = getWordsByType('adjectives', questions.words)
+    let subjects = getSubjects(adjectives.words, from)
+
+    return {questions: questions.found,
+            subjects: subjects.found,
+            verbs: verbs.found,
+            adjectives: adjectives.found,
+            extra: subjects.words
+           }
 }
 
 module.exports = {
